@@ -1,0 +1,43 @@
+# ============================================
+# Backend .gitignore
+# ============================================
+
+# ── Credentials & Secrets ──
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+geovision-final*.json
+client_secret*.json
+geovision_drive_token.json
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+.eggs/
+*.whl
+venv/
+.venv/
+
+# ── Large data (served from GCS now) ──
+final_lookup_tables/
+
+# ── Logs ──
+*.log
+geovision.log
+
+# ── ML model debug/temp files ──
+models/hazardguard/debug_logs/
+
+# ── OS / IDE ──
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*~

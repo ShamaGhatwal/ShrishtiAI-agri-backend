@@ -1,0 +1,75 @@
+# ============================================
+# Render Blueprint — GEO VISION Backend
+# ============================================
+# Deploy: connect your GitHub repo and Render auto-detects this file
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: geovision-backend
+    runtime: python
+    region: singapore          # closest to India (asia-south1 GCS bucket)
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn main:app --bind 0.0.0.0:$PORT --timeout 120 --workers 2 --threads 4
+    healthCheckPath: /health
+    envVars:
+      # ── Flask ──
+      - key: FLASK_ENV
+        value: production
+      - key: FLASK_DEBUG
+        value: "False"
+      - key: FLASK_HOST
+        value: 0.0.0.0
+
+      # ── Google Earth Engine ──
+      - key: GEE_PROJECT_ID
+        sync: false            # set manually in Render dashboard
+      - key: GEE_SERVICE_ACCOUNT_KEY
+        sync: false            # paste full JSON key content here
+
+      # ── Gemini AI ──
+      - key: GEMINI_API_KEY
+        sync: false
+
+      # ── Google Cloud Storage ──
+      - key: GCS_BUCKET_BASE_URL
+        value: https://storage.googleapis.com/satellite-cog-data-for-shrishti/
+      - key: GCS_BUCKET
+        value: satellite-cog-data-for-shrishti
+      - key: GCS_TEMP_PREFIX
+        value: temp/
+
+      # ── Raster COG paths (GCS public URLs) ──
+      - key: RASTER_SRTM_PATH
+        value: https://storage.googleapis.com/satellite-cog-data-for-shrishti/SRTM_elevation.tif
+      - key: RASTER_SLOPE_PATH
+        value: https://storage.googleapis.com/satellite-cog-data-for-shrishti/SRTM_slope.tif
+      - key: RASTER_ASPECT_PATH
+        value: https://storage.googleapis.com/satellite-cog-data-for-shrishti/SRTM_aspect.tif
+      - key: RASTER_TWI_PATH
+        value: https://storage.googleapis.com/satellite-cog-data-for-shrishti/twi.tif
+      - key: RASTER_FLOW_ACC_PATH
+        value: https://storage.googleapis.com/satellite-cog-data-for-shrishti/flow_accumulation.tif
+      - key: RASTER_CURVATURE_PATH
+        value: https://storage.googleapis.com/satellite-cog-data-for-shrishti/curvature.tif
+      - key: RASTER_DISTANCE_TO_RIVER_PATH
+        value: https://storage.googleapis.com/satellite-cog-data-for-shrishti/distance_to_river.tif
+      - key: RASTER_LITHOLOGY_PATH
+        value: https://storage.googleapis.com/satellite-cog-data-for-shrishti/lithology_encoded.tif
+      - key: RASTER_IMPERVIOUS_PATH
+        value: https://storage.googleapis.com/satellite-cog-data-for-shrishti/NLCD_2021_Impervious_L48.tif
+
+      # ── Supabase ──
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+
+      # ── CORS ──
+      - key: ALLOWED_ORIGINS
+        sync: false            # set to your Vercel frontend URL
+
+      # ── Logging ──
+      - key: LOG_LEVEL
+        value: INFO

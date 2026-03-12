@@ -1,0 +1,47 @@
+# ── Do NOT include in Docker image ──
+
+# Mobile app (not needed by backend)
+app_main/
+
+# Frontend (not needed by backend)
+geo-sight-forge/
+
+# Large local raster files (served from GCS in production)
+ALLrasterFiles/
+
+# Temp files
+temp/
+
+# Secrets
+**/.env
+**/.env.*
+!**/.env.example
+
+# Python bytecode
+**/__pycache__/
+**/*.py[cod]
+**/*.pyo
+
+# Logs
+**/*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Test files (keep build small)
+server/test_*.py
+server/test_*.json
+
+# Render-specific (not needed for HF)
+server/render.yaml
+server/Procfile

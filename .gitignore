@@ -1,0 +1,97 @@
+ALLrasterFiles/
+.idea/
+temp
+node_modules/
+dist/
+
+# ============================================
+# Root .gitignore for GEO VISION Dashboard
+# ============================================
+
+# ── Git internals ──
+.git_backup/
+
+# ── Credentials & Secrets ──
+*.pem
+*.key
+.env
+.env.*
+!.env.example
+
+# Google service account keys
+geovision-final*.json
+**/geovision-final*.json
+
+# Google OAuth client secrets & tokens
+**/client_secret*.json
+**/geovision_drive_token.json
+client_secret*.json
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+*.whl
+venv/
+.venv/
+env/
+
+# ── Node.js ──
+node_modules/
+.npm
+.yarn/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ── Build outputs ──
+dist/
+dist-ssr/
+*.local
+.output/
+.vercel/
+
+# ── IDE / Editor ──
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.swp
+*~
+
+# ── OS files ──
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Logs ──
+*.log
+logs/
+geovision.log
+
+# ── Misc ──
+*.bak
+*.tmp
+*.temp
+.cache/
+coverage/
+.nyc_output/
+
+server/proj_data/
+
+gee_key_for_hf.txt
+
+.vscode/
+server/models/
