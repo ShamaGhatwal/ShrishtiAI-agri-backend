@@ -94,4 +94,9 @@ server/proj_data/
 gee_key_for_hf.txt
 
 .vscode/
-server/models/
+server/models/*
+!server/models/*.py
+server/models/__pycache__/
+server/models/geovision/
+server/models/hazardguard/
+server/models/weatherwise/
