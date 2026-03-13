@@ -17,5 +17,5 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          git remote add hf https://projectgaia:${HF_TOKEN}@huggingface.co/spaces/projectgaia/ShrishtiAI-backend
+          git remote add hf https://projectgaia:${HF_TOKEN}@huggingface.co/spaces/shrishtiai/ShrishtiAI-backend
           git push hf main:main --force
