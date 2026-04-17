@@ -26,6 +26,8 @@ import joblib
 from typing import Dict, List, Optional, Any, Tuple
 from pathlib import Path
 
+from config.paths import get_local_model_root
+
 logger = logging.getLogger(__name__)
 
 # ════════════════════════════════════════════════════════════════════
@@ -81,7 +83,7 @@ class GeoVisionFusionModel:
 
     def __init__(self):
         """Initialize GeoVision fusion model."""
-        self.MODEL_BASE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'geovision')
+        self.MODEL_BASE_DIR = get_local_model_root() / 'geovision'
 
         # Model directories
         self.LSTM_DIR     = os.path.join(self.MODEL_BASE_DIR, "lstm")

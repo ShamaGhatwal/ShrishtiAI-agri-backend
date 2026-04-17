@@ -24,7 +24,7 @@ geovision-final*.json
 
 # Google OAuth client secrets & tokens
 **/client_secret*.json
-**/geovision_drive_token.json
+
 client_secret*.json
 
 # ── Python ──

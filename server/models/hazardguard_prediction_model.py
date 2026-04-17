@@ -13,16 +13,18 @@ import ast
 from typing import Dict, List, Optional, Any, Tuple, Union
 from datetime import datetime
 
+from config.paths import get_local_model_root
+
 logger = logging.getLogger(__name__)
 
 class HazardGuardPredictionModel:
     """Model for HazardGuard disaster prediction using trained XGBoost classifier"""
     
     # Model files directory
-    MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'hazardguard', 'normal_vs_disaster')
+    MODEL_DIR = get_local_model_root() / 'hazardguard' / 'normal_vs_disaster'
     
     # Debug logging directory
-    DEBUG_LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'hazardguard', 'debug_logs')
+    DEBUG_LOG_DIR = get_local_model_root() / 'hazardguard' / 'debug_logs'
     
     # Feature columns expected by the model (based on training script)
     ARRAY_FEATURE_COLUMNS = [

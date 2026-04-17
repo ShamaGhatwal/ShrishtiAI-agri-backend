@@ -140,6 +140,8 @@ from routes.hazardguard_prediction_routes import hazardguard_bp
 from routes.weatherwise_prediction_routes import weatherwise_bp
 from routes.geovision_fusion_routes import geovision_bp
 from routes.auth_routes import auth_bp, init_auth_routes
+from routes.layers_routes import layers_bp
+from routes.credits_routes import credits_bp
 from utils import setup_logging, create_error_response, create_success_response
 print(f"[STARTUP] All modules imported.  ({_elapsed()})")
 
@@ -439,6 +441,8 @@ def register_blueprints(app: Flask, controllers: dict, logger: logging.Logger):
     app.register_blueprint(weatherwise_bp, url_prefix='/api/weatherwise')  # Register WeatherWise prediction routes
     app.register_blueprint(geovision_bp, url_prefix='/api/geovision')  # Register GeoVision Fusion prediction routes
     app.register_blueprint(auth_bp, url_prefix='/api')  # Register auth routes at /api/auth/*
+    app.register_blueprint(layers_bp, url_prefix='/api')  # Register dashboard state/goa layer routes
+    app.register_blueprint(credits_bp, url_prefix='/api')  # Register dashboard credits routes
     
     logger.info("Blueprints registered successfully")
     

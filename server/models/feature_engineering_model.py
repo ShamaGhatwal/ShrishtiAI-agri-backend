@@ -14,6 +14,8 @@ from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
 import logging
 
+from config.paths import get_local_model_root
+
 class WeatherFeatureModel:
     """Model for weather feature engineering operations"""
     
@@ -21,10 +23,7 @@ class WeatherFeatureModel:
     # These stats were computed across the ENTIRE training dataset (~123k rows × 60 days)
     # and MUST be used for feature engineering to match the training distribution.
     # Without them, per-window stats inflate disaster-related features for normal weather.
-    TRAINING_STATS_PATH = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        'hazardguard', 'shared', 'training_global_stats.json'
-    )
+    TRAINING_STATS_PATH = get_local_model_root() / 'hazardguard' / 'shared' / 'training_global_stats.json'
     
     # Cached training stats (loaded once)
     _training_stats = None

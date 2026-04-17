@@ -13,6 +13,8 @@ from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime, timedelta
 from sklearn.preprocessing import StandardScaler
 
+from config.paths import get_local_model_root
+
 # TensorFlow imported at startup so it loads once predictably.
 # AttentionLayer is defined inside load_models() to avoid constructing
 # Keras layers before a model context is ready.
@@ -30,8 +32,8 @@ class WeatherWisePredictionModel:
         self.output_scalers = {}
         self.model_info = {}
         
-        # Model paths - Use organized subfolders inside backend/models/weatherwise/
-        self.base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'weatherwise')
+        # Model paths - use the repo-root models/ folder so local and CI runs match.
+        self.base_path = get_local_model_root() / 'weatherwise'
         logger.info(f"[WEATHERWISE_MODEL] Base path for models: {self.base_path}")
         
         self.model_paths = {

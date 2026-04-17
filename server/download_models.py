@@ -1,17 +1,29 @@
-"""Downloads model files from private HF model repo at Docker build time."""
+"""Downloads model files from Hugging Face at Docker build time."""
+from __future__ import annotations
+
 import os
+
 from huggingface_hub import snapshot_download
 
-token = os.environ.get("HF_TOKEN")
-if not token:
-    raise RuntimeError("HF_TOKEN secret is not set — cannot download private model repo")
+from config.paths import get_model_repo_id, get_local_model_root
 
-print("Downloading models from projectgaia/ShrishtiAI-models ...")
+MODEL_REPO_ID = get_model_repo_id()
+LOCAL_MODEL_DIR = get_local_model_root()
+MODEL_REPO_TYPE = os.getenv("MODEL_REPO_TYPE", "model").strip() or "model"
+
+if not MODEL_REPO_ID:
+    raise RuntimeError(
+        "MODEL_REPO_ID or MODEL_ROOT_PATH must point to the Hugging Face model repository"
+    )
+
+hf_token = os.environ.get("HF_TOKEN")
+
+print(f"Downloading models from {MODEL_REPO_ID} ...")
 snapshot_download(
-    repo_id="projectgaia/ShrishtiAI-models",
-    repo_type="model",
-    local_dir="/app/models",
-    token=token,
+    repo_id=MODEL_REPO_ID,
+    repo_type=MODEL_REPO_TYPE,
+    local_dir=str(LOCAL_MODEL_DIR),
+    token=hf_token,
     ignore_patterns=["*.git*", ".gitattributes"],
 )
-print("Models downloaded successfully.")
+print(f"Models downloaded successfully to {LOCAL_MODEL_DIR}.")

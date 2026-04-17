@@ -5,8 +5,10 @@ Loads environment variables and provides configuration settings
 import os
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
+from .paths import SERVER_DIR, get_local_model_root, get_model_repo_id
+
+# Load environment variables from the server-local .env file regardless of cwd.
+load_dotenv(SERVER_DIR / '.env')
 
 class Config:
     """Base configuration class"""
@@ -39,6 +41,10 @@ class Config:
     # Logging
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
     LOG_FILE = os.getenv('LOG_FILE', 'geovision.log')
+
+    # Model storage
+    MODEL_ROOT_PATH = str(get_local_model_root())
+    MODEL_REPO_ID = get_model_repo_id()
     
     @classmethod
     def validate(cls):

@@ -24,6 +24,8 @@ import numpy as np
 from typing import Dict, List, Any, Tuple
 from pathlib import Path
 
+from config.paths import get_local_model_root
+
 logger = logging.getLogger(__name__)
 
 class DisasterTypeClassifierModel:
@@ -31,7 +33,7 @@ class DisasterTypeClassifierModel:
     
     def __init__(self):
         """Initialize disaster type classifier"""
-        self.MODEL_BASE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'hazardguard')
+        self.MODEL_BASE_DIR = get_local_model_root() / 'hazardguard'
         
         # Define model paths for each disaster type (new binary NO_X vs X models)
         self.model_paths = {

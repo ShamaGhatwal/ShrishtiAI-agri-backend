@@ -8,6 +8,8 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, Tuple, List
 
+from config.paths import resolve_path
+
 class GEEService:
     """Service class for Google Earth Engine operations"""
     
@@ -29,6 +31,11 @@ class GEEService:
         # Already a valid file path
         if os.path.exists(self.service_account_key):
             return self.service_account_key
+
+        # Resolve relative paths against the server directory / repo checkout.
+        resolved_key = resolve_path(self.service_account_key)
+        if resolved_key and os.path.exists(resolved_key):
+            return str(resolved_key)
         
         # Might be inline JSON string — write to a temp file
         if self.service_account_key.strip().startswith('{'):
