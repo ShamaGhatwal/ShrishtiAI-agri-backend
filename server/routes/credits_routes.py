@@ -1,13 +1,17 @@
-"""Credits compatibility routes used by the web dashboard."""
+"""Credits routes backed by Supabase user profiles."""
 from __future__ import annotations
 
 from typing import Any, Dict
 
 from flask import Blueprint, jsonify, request
 
+from routes.auth_routes import require_auth
 from utils import create_error_response, create_success_response
 
 credits_bp = Blueprint("credits", __name__)
+
+# Set by init_credits_routes() from main.py
+auth_controller = None
 
 DEFAULT_CREDITS = 30
 
@@ -17,31 +21,27 @@ CREDIT_BUNDLES = [
     {"id": "plus_100000", "credits": 100000, "price_inr": 59999, "label": "100000 Credits"},
 ]
 
-USER_CREDITS: Dict[str, int] = {}
+
+def init_credits_routes(controller_instance):
+    """Inject the AuthController instance so credits can use Supabase."""
+    global auth_controller
+    auth_controller = controller_instance
 
 
-def _user_key() -> str:
-    auth = request.headers.get("Authorization", "")
-    if auth.startswith("Bearer "):
-        return auth.split(" ", 1)[1].strip() or "anonymous"
-    return "anonymous"
-
-
-def _get_balance(key: str) -> int:
-    if key not in USER_CREDITS:
-        USER_CREDITS[key] = DEFAULT_CREDITS
-    return USER_CREDITS[key]
-
-
-def _set_balance(key: str, value: int) -> int:
-    USER_CREDITS[key] = max(0, int(value))
-    return USER_CREDITS[key]
+def _get_auth_service():
+    if auth_controller is None:
+        return None
+    return getattr(auth_controller, "auth_service", None)
 
 
 @credits_bp.route("/credits/balance", methods=["GET"])
-def get_balance():
-    key = _user_key()
-    balance = _get_balance(key)
+@require_auth
+def get_balance(user_id: str, access_token: str):
+    auth_service = _get_auth_service()
+    if auth_service is None:
+        return jsonify(create_error_response("Auth service not initialized")), 503
+
+    balance = auth_service.get_credit_balance(user_id)
     return jsonify(create_success_response({"data": {"credits": balance}}))
 
 
@@ -51,7 +51,12 @@ def get_bundles():
 
 
 @credits_bp.route("/credits/purchase", methods=["POST"])
-def purchase_bundle():
+@require_auth
+def purchase_bundle(user_id: str, access_token: str):
+    auth_service = _get_auth_service()
+    if auth_service is None:
+        return jsonify(create_error_response("Auth service not initialized")), 503
+
     payload: Dict[str, Any] = request.get_json(silent=True) or {}
     bundle_id = str(payload.get("bundle_id", "")).strip()
 
@@ -59,27 +64,33 @@ def purchase_bundle():
     if selected is None:
         return jsonify(create_error_response("Invalid bundle_id")), 400
 
-    key = _user_key()
-    new_balance = _set_balance(key, _get_balance(key) + int(selected["credits"]))
-    return jsonify(create_success_response({"data": {"remaining_credits": new_balance}}))
+    next_balance = auth_service.add_credits(user_id, int(selected["credits"]))
+    if next_balance is None:
+        return jsonify(create_error_response("Failed to update credit balance")), 500
+
+    return jsonify(create_success_response({"data": {"remaining_credits": next_balance}}))
 
 
 @credits_bp.route("/credits/deduct", methods=["POST"])
-def deduct_credits():
+@require_auth
+def deduct_credits(user_id: str, access_token: str):
+    auth_service = _get_auth_service()
+    if auth_service is None:
+        return jsonify(create_error_response("Auth service not initialized")), 503
+
     payload: Dict[str, Any] = request.get_json(silent=True) or {}
     amount = int(payload.get("amount", 0) or 0)
     if amount <= 0:
         return jsonify(create_error_response("amount must be a positive integer")), 400
 
-    key = _user_key()
-    current = _get_balance(key)
-    if current < amount:
+    result = auth_service.deduct_credits(user_id, amount)
+    if not result.get("success"):
         return (
             jsonify(
                 create_error_response(
-                    "Insufficient credits",
+                    result.get("error_message", "Insufficient credits"),
                     {
-                        "remaining_credits": current,
+                        "remaining_credits": result.get("remaining_credits", 0),
                         "required_credits": amount,
                     },
                 )
@@ -87,12 +98,18 @@ def deduct_credits():
             402,
         )
 
-    new_balance = _set_balance(key, current - amount)
-    return jsonify(create_success_response({"data": {"remaining_credits": new_balance}}))
+    return jsonify(create_success_response({"data": {"remaining_credits": result["remaining_credits"]}}))
 
 
 @credits_bp.route("/credits/reset", methods=["POST"])
-def reset_credits():
-    key = _user_key()
-    new_balance = _set_balance(key, DEFAULT_CREDITS)
-    return jsonify(create_success_response({"data": {"credits": new_balance}}))
+@require_auth
+def reset_credits(user_id: str, access_token: str):
+    auth_service = _get_auth_service()
+    if auth_service is None:
+        return jsonify(create_error_response("Auth service not initialized")), 503
+
+    next_balance = auth_service.reset_credits(user_id, DEFAULT_CREDITS)
+    if next_balance is None:
+        return jsonify(create_error_response("Failed to reset credit balance")), 500
+
+    return jsonify(create_success_response({"data": {"credits": next_balance}}))

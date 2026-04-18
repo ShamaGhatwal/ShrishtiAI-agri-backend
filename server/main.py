@@ -141,7 +141,8 @@ from routes.weatherwise_prediction_routes import weatherwise_bp
 from routes.geovision_fusion_routes import geovision_bp
 from routes.auth_routes import auth_bp, init_auth_routes
 from routes.layers_routes import layers_bp
-from routes.credits_routes import credits_bp
+from routes.credits_routes import credits_bp, init_credits_routes
+from routes.api_keys_routes import api_keys_bp
 from utils import setup_logging, create_error_response, create_success_response
 print(f"[STARTUP] All modules imported.  ({_elapsed()})")
 
@@ -185,7 +186,7 @@ def create_app(config_name: str = None) -> Flask:
     # Setup CORS
     CORS(app, origins=config_class.ALLOWED_ORIGINS, 
          methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-         allow_headers=['Content-Type', 'Authorization'])
+            allow_headers=['Content-Type', 'Authorization', 'X-Demo-Local-Credits', 'x-demo-local-credits'])
     
     # Initialize services
     services = initialize_services(config_class, logger)
@@ -411,6 +412,7 @@ def register_blueprints(app: Flask, controllers: dict, logger: logging.Logger):
     # Initialize auth routes (if configured)
     if controllers.get('auth'):
         init_auth_routes(controllers['auth'])
+        init_credits_routes(controllers['auth'])
         logger.info("Auth routes initialized")
     else:
         logger.warning("Auth controller not available -- skipping auth routes")
@@ -443,6 +445,7 @@ def register_blueprints(app: Flask, controllers: dict, logger: logging.Logger):
     app.register_blueprint(auth_bp, url_prefix='/api')  # Register auth routes at /api/auth/*
     app.register_blueprint(layers_bp, url_prefix='/api')  # Register dashboard state/goa layer routes
     app.register_blueprint(credits_bp, url_prefix='/api')  # Register dashboard credits routes
+    app.register_blueprint(api_keys_bp, url_prefix='/api')  # Register dashboard API keys routes
     
     logger.info("Blueprints registered successfully")
     

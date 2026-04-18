@@ -183,6 +183,136 @@ class AuthService:
             logger.error(f"[AUTH] get_profile error: {e}")
             return None
 
+    # ── Credits Operations ──────────────────────────────────────────────
+
+    def get_credit_balance(self, user_id: str) -> int:
+        """Fetch the persisted credit balance for a user."""
+        try:
+            res = (
+                self._client.table("user_profiles")
+                .select("credits")
+                .eq("user_id", user_id)
+                .maybe_single()
+                .execute()
+            )
+            data = res.data or {}
+            return int(data.get("credits", 0) or 0)
+        except Exception as e:
+            logger.error(f"[AUTH] get_credit_balance error: {e}")
+            return 0
+
+    def add_credits(self, user_id: str, amount: int) -> Optional[int]:
+        """Add credits to the persisted user profile balance."""
+        try:
+            profile = (
+                self._client.table("user_profiles")
+                .select("credits")
+                .eq("user_id", user_id)
+                .maybe_single()
+                .execute()
+                .data
+            )
+            if not profile:
+                return None
+
+            current = self.get_credit_balance(user_id)
+            next_balance = max(0, int(current) + int(amount))
+            res = (
+                self._client.table("user_profiles")
+                .update({"credits": next_balance})
+                .eq("user_id", user_id)
+                .execute()
+            )
+            if res.data is None:
+                return None
+            return next_balance
+        except Exception as e:
+            logger.error(f"[AUTH] add_credits error: {e}")
+            return None
+
+    def deduct_credits(self, user_id: str, amount: int) -> Dict[str, Any]:
+        """Deduct credits from the persisted user profile balance."""
+        try:
+            amount = max(0, int(amount))
+            profile = (
+                self._client.table("user_profiles")
+                .select("credits")
+                .eq("user_id", user_id)
+                .maybe_single()
+                .execute()
+                .data
+            )
+            if not profile:
+                return {
+                    "success": False,
+                    "remaining_credits": 0,
+                    "error_message": "User profile not found",
+                }
+
+            current = self.get_credit_balance(user_id)
+
+            if current < amount:
+                return {
+                    "success": False,
+                    "remaining_credits": current,
+                    "error_message": "Insufficient credits",
+                }
+
+            next_balance = current - amount
+            res = (
+                self._client.table("user_profiles")
+                .update({"credits": next_balance})
+                .eq("user_id", user_id)
+                .execute()
+            )
+            if res.data is None:
+                return {
+                    "success": False,
+                    "remaining_credits": current,
+                    "error_message": "Failed to update credit balance",
+                }
+
+            return {
+                "success": True,
+                "remaining_credits": next_balance,
+                "error_message": None,
+            }
+        except Exception as e:
+            logger.error(f"[AUTH] deduct_credits error: {e}")
+            return {
+                "success": False,
+                "remaining_credits": 0,
+                "error_message": str(e),
+            }
+
+    def reset_credits(self, user_id: str, amount: int = 30) -> Optional[int]:
+        """Reset the persisted credit balance for a user."""
+        try:
+            profile = (
+                self._client.table("user_profiles")
+                .select("credits")
+                .eq("user_id", user_id)
+                .maybe_single()
+                .execute()
+                .data
+            )
+            if not profile:
+                return None
+
+            next_balance = max(0, int(amount))
+            res = (
+                self._client.table("user_profiles")
+                .update({"credits": next_balance})
+                .eq("user_id", user_id)
+                .execute()
+            )
+            if res.data is None:
+                return None
+            return next_balance
+        except Exception as e:
+            logger.error(f"[AUTH] reset_credits error: {e}")
+            return None
+
     def update_profile(self, user_id: str, updates: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
         """Update profile fields for a user."""
         try:

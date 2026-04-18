@@ -339,7 +339,10 @@ class HazardGuardPredictionService:
             
             logger.info(f"[PREDICTION] HazardGuard prediction for location ({latitude}, {longitude})")
             
-            # Calculate date range for weather data
+            # Calculate historical date window for NASA POWER data.
+            # reference_date is interpreted as the END date for weather history.
+            # NASA POWER has a lag of ~7 days; use 8 days to be safe.
+            safe_latest_date = datetime.now() - timedelta(days=8)
             if reference_date:
                 try:
                     ref_date = datetime.strptime(reference_date, '%Y-%m-%d')
@@ -351,10 +354,18 @@ class HazardGuardPredictionService:
                         'processing_time_seconds': (datetime.now() - start_time).total_seconds()
                     }
             else:
-                ref_date = datetime.now() - timedelta(days=60)  # Default: 60 days ago
-            
-            start_date = ref_date.strftime('%Y-%m-%d')
-            end_date = (ref_date + timedelta(days=59)).strftime('%Y-%m-%d')  # 60 days total
+                ref_date = safe_latest_date
+
+            if ref_date > safe_latest_date:
+                logger.warning(
+                    "   [DATE_CLAMP] reference_date %s is too recent for NASA POWER; clamped to %s",
+                    ref_date.strftime('%Y-%m-%d'),
+                    safe_latest_date.strftime('%Y-%m-%d'),
+                )
+                ref_date = safe_latest_date
+
+            end_date = ref_date.strftime('%Y-%m-%d')
+            start_date = (ref_date - timedelta(days=58)).strftime('%Y-%m-%d')  # 59 days total
             
             logger.info(f"   [DATE_RANGE] Using weather data from {start_date} to {end_date}")
             
