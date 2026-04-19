@@ -878,15 +878,23 @@ def _build_dynamic_dataset(dataset_id: str):
         return image, vis, meta
 
     if ds in ('rainfall', 'gpm_imerg_precip'):
-        image = ee.ImageCollection('NASA/GPM_L3/IMERG_V07').filterDate('2024-06-01', '2024-06-30').select('precipitation').mean()
-        vis = {'min': 0, 'max': 10, 'palette': ['f7fbff', 'c6dbef', '6baed6', '2171b5', '08306b']}
-        meta = {'title': 'IMERG Precipitation', 'description': 'Mean precipitation composite.', 'source': 'NASA/GPM_L3/IMERG_V07'}
+        raw = ee.ImageCollection('NASA/GPM_L3/IMERG_V07').filterDate('2024-06-01', '2024-06-30').select('precipitation').mean()
+        # Mask near-zero drizzle/no-data to avoid washed-out white global tiles.
+        image = raw.updateMask(raw.gt(0.02)).rename('precipitation_mmhr')
+        vis = {
+            'min': 0.05,
+            'max': 2.5,
+            'palette': ['0b132b', '1c2541', '3a506b', '5bc0be', '6fffe9', 'f0fdfa']
+        }
+        meta = {'title': 'IMERG Precipitation', 'description': 'Mean precipitation (masked low-intensity pixels for clearer contrast).', 'source': 'NASA/GPM_L3/IMERG_V07'}
         return image, vis, meta
 
     if ds == 'ocean_temp':
-        image = ee.ImageCollection('NASA/OCEANDATA/MODIS-Aqua/L3SMI').filterDate('2023-01-01', '2023-12-31').select('sst').mean()
-        vis = {'min': -2, 'max': 35, 'palette': ['#053061', '#2166ac', '#4393c3', '#d1e5f0', '#f4a582', '#b2182b']}
-        meta = {'title': 'Ocean Surface Temperature', 'description': 'Sea-surface temperature mean composite.', 'source': 'NASA/OCEANDATA/MODIS-Aqua/L3SMI'}
+        # OISST is stable and explicit scale conversion prevents flat single-color rendering.
+        raw = ee.ImageCollection('NOAA/CDR/OISST/V2_1').filterDate('2023-01-01', '2023-12-31').select('sst').mean()
+        image = raw.multiply(0.01).rename('sst_celsius').updateMask(raw.neq(0))
+        vis = {'min': -2, 'max': 35, 'palette': ['#313695', '#4575b4', '#74add1', '#abd9e9', '#fee090', '#f46d43', '#a50026']}
+        meta = {'title': 'Ocean Surface Temperature', 'description': 'Sea-surface temperature annual mean (Celsius).', 'source': 'NOAA/CDR/OISST/V2_1'}
         return image, vis, meta
 
     if ds == 'wildfire_risk':
@@ -904,16 +912,18 @@ def _build_dynamic_dataset(dataset_id: str):
     # Snippet ids (backend/gee_test_snippets)
     if ds == 'worldcereal_models_v100':
         first = ee.ImageCollection('ESA/WorldCereal/2021/MODELS/v100').first()
-        image = ee.Image(first).select('classification')
-        vis = {'min': 0, 'max': 100, 'palette': ['000000', '00ff00']}
-        meta = {'title': 'WorldCereal Classification', 'description': 'Model-based crop classification.', 'source': 'ESA/WorldCereal/2021/MODELS/v100'}
+        classification = ee.Image(first).select('classification')
+        image = classification.updateMask(classification.gt(0)).rename('classification')
+        vis = {'min': 1, 'max': 100, 'palette': ['fff7bc', 'fec44f', '41ab5d', '238b45', '005a32']}
+        meta = {'title': 'WorldCereal Classification', 'description': 'Model-based crop classification (non-crop masked).', 'source': 'ESA/WorldCereal/2021/MODELS/v100'}
         return image, vis, meta
 
     if ds == 'worldcereal_markers_v100':
         first = ee.ImageCollection('ESA/WorldCereal/2021/MARKERS/v100').first()
-        image = ee.Image(first).select('classification')
-        vis = {'min': 0, 'max': 100, 'palette': ['000000', '00bfff']}
-        meta = {'title': 'WorldCereal Markers', 'description': 'Active cropland marker.', 'source': 'ESA/WorldCereal/2021/MARKERS/v100'}
+        classification = ee.Image(first).select('classification')
+        image = classification.updateMask(classification.gt(0)).rename('classification')
+        vis = {'min': 1, 'max': 100, 'palette': ['08306b', '2171b5', '4292c6', '6baed6', '9ecae1', 'c6dbef', 'deebf7']}
+        meta = {'title': 'WorldCereal Markers', 'description': 'Active cropland marker (non-active masked).', 'source': 'ESA/WorldCereal/2021/MARKERS/v100'}
         return image, vis, meta
 
     if ds == 'wapor_et_ratio':
@@ -999,22 +1009,67 @@ def _build_dynamic_dataset(dataset_id: str):
     raise ValueError(f'Unsupported dataset id: {dataset_id}')
 
 
+def _parse_aoi_bbox_from_request():
+    """Parse optional aoi_bbox=minLon,minLat,maxLon,maxLat query param."""
+    raw_bbox = (request.args.get('aoi_bbox') or '').strip()
+    if not raw_bbox:
+        return None, None
+
+    try:
+        parts = [float(value.strip()) for value in raw_bbox.split(',')]
+    except Exception as exc:
+        raise ValueError('Invalid aoi_bbox. Expected numeric CSV: minLon,minLat,maxLon,maxLat') from exc
+
+    if len(parts) != 4:
+        raise ValueError('Invalid aoi_bbox. Expected 4 values: minLon,minLat,maxLon,maxLat')
+
+    min_lon, min_lat, max_lon, max_lat = parts
+
+    if min_lon > max_lon:
+        min_lon, max_lon = max_lon, min_lon
+    if min_lat > max_lat:
+        min_lat, max_lat = max_lat, min_lat
+
+    if min_lon < -180 or max_lon > 180 or min_lat < -90 or max_lat > 90:
+        raise ValueError('Invalid aoi_bbox bounds. Longitude must be [-180, 180] and latitude [-90, 90]')
+
+    if (max_lon - min_lon) <= 0 or (max_lat - min_lat) <= 0:
+        raise ValueError('Invalid aoi_bbox area. Bounding box must have positive width and height')
+
+    aoi_geom = ee.Geometry.Rectangle([min_lon, min_lat, max_lon, max_lat], None, False)
+    return aoi_geom, [min_lon, min_lat, max_lon, max_lat]
+
+
+@legacy_bp.route('/gee/dataset/<dataset_id>', methods=['GET'])
 @legacy_bp.route('/gee/<dataset_id>', methods=['GET'])
 def get_dynamic_dataset_tiles(dataset_id: str):
     """Dynamic dataset tiles endpoint used by dataset modal and cards."""
     try:
         image, vis_params, metadata = _build_dynamic_dataset(dataset_id)
+
+        aoi_geom, aoi_bbox = _parse_aoi_bbox_from_request()
+        if aoi_geom is not None:
+            image = image.clip(aoi_geom)
+
         map_id = image.getMapId(vis_params)
+
+        payload_metadata = {
+            **metadata,
+            'dataset_id': dataset_id,
+            'timestamp': datetime.now().isoformat(),
+            'aoi_applied': bool(aoi_geom),
+        }
+        if aoi_bbox is not None:
+            payload_metadata['aoi_bbox'] = aoi_bbox
+
         return jsonify({
             'success': True,
             'tile_url': map_id['tile_fetcher'].url_format,
-            'metadata': {
-                **metadata,
-                'dataset_id': dataset_id,
-                'timestamp': datetime.now().isoformat(),
-            }
+            'metadata': payload_metadata
         })
     except ValueError as e:
+        if str(e).startswith('Invalid aoi_bbox'):
+            return jsonify({'success': False, 'error': str(e)}), 400
         return jsonify({'success': False, 'error': str(e)}), 404
     except Exception as e:
         logger.error(f"[GEE_DYNAMIC] Dataset {dataset_id} failed: {e}")
