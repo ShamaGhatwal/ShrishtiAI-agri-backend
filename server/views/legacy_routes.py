@@ -693,3 +693,320 @@ def _timelapse_title(ds: str) -> str:
 
 def _timelapse_source(ds: str) -> str:
     return _TIMELAPSE_META.get(ds, ('', 'Google Earth Engine'))[1]
+
+
+GEE_SNIPPET_CATALOG = [
+    {
+        'id': 'worldcereal_models_v100',
+        'name': 'WorldCereal Models',
+        'title': 'ESA WorldCereal Crop Classification',
+        'description': 'WorldCereal model-based crop classification and confidence.',
+        'category': 'Agriculture',
+        'source': 'ESA/WorldCereal/2021/MODELS/v100',
+    },
+    {
+        'id': 'worldcereal_markers_v100',
+        'name': 'WorldCereal Markers',
+        'title': 'Active Cropland Marker',
+        'description': 'WorldCereal marker layer for active cropland mapping.',
+        'category': 'Agriculture',
+        'source': 'ESA/WorldCereal/2021/MARKERS/v100',
+    },
+    {
+        'id': 'wapor_et_ratio',
+        'name': 'WAPOR ET Ratio',
+        'title': 'Evapotranspiration Ratio (ETa/ETo)',
+        'description': 'FAO WAPOR derived evapotranspiration efficiency ratio.',
+        'category': 'Water & Agriculture',
+        'source': 'FAO/WAPOR/3/L1_AETI_D + FAO/WAPOR/3/L1_RET_D',
+    },
+    {
+        'id': 'gfsad_cropland_extent',
+        'name': 'GFSAD Cropland Extent',
+        'title': 'Global Cropland Extent',
+        'description': 'USGS global cropland extent / landcover map.',
+        'category': 'Agriculture',
+        'source': 'USGS/GFSAD1000_V1',
+    },
+    {
+        'id': 'fao_drained_organic_soils',
+        'name': 'FAO Drained Organic Soils',
+        'title': 'Drained Organic Soil Area',
+        'description': 'Latest FAO drained organic soils layer.',
+        'category': 'Climate',
+        'source': 'FAO/GHG/1/DROSA_A',
+    },
+    {
+        'id': 'forest_loss_drivers_wri_gdm',
+        'name': 'Forest Loss Drivers',
+        'title': 'Dominant Driver of Forest Loss',
+        'description': 'Driver class map for primary forest loss.',
+        'category': 'Hazards',
+        'source': 'projects/landandcarbon/assets/wri_gdm_drivers_forest_loss_1km/v1_2_2001_2024',
+    },
+    {
+        'id': 'chirps_rainfall_anomaly',
+        'name': 'CHIRPS Rainfall Anomaly',
+        'title': 'Rainfall Anomaly vs Baseline',
+        'description': 'Recent rainfall minus long-term baseline using CHIRPS.',
+        'category': 'Climate',
+        'source': 'UCSB-CHG/CHIRPS/DAILY',
+    },
+    {
+        'id': 'gfs_forecast_panel',
+        'name': 'GFS Forecast Panel',
+        'title': '24h Forecast Temperature',
+        'description': 'NOAA GFS near-term 2m temperature forecast.',
+        'category': 'Weather',
+        'source': 'NOAA/GFS0P25',
+    },
+    {
+        'id': 'soil_moisture_smap',
+        'name': 'SMAP Soil Moisture',
+        'title': 'Surface Soil Moisture',
+        'description': 'NASA SMAP surface soil moisture climatology.',
+        'category': 'Soil & Water',
+        'source': 'NASA/SMAP/SPL3SMP_E/006',
+    },
+    {
+        'id': 'spei_drought_index',
+        'name': 'SPEI Drought Index',
+        'title': 'SPEI 12-Month Drought Index',
+        'description': 'Standardized drought index from CSIC SPEI.',
+        'category': 'Drought',
+        'source': 'CSIC/SPEI/2_10',
+    },
+    {
+        'id': 'kbdi_drought_index',
+        'name': 'KBDI Drought Index',
+        'title': 'Keetch-Byram Drought Index',
+        'description': 'KBDI wildfire-related drought indicator.',
+        'category': 'Drought',
+        'source': 'UTOKYO/WTLAB/KBDI/v1',
+    },
+    {
+        'id': 'dynamic_land_cover_change',
+        'name': 'Dynamic Land Cover Change',
+        'title': 'Dynamic World Crops Probability',
+        'description': 'Dynamic World crop probability mean composite.',
+        'category': 'Land Cover',
+        'source': 'GOOGLE/DYNAMICWORLD/V1',
+    },
+    {
+        'id': 'era5_land_heat_stress',
+        'name': 'ERA5 Land Heat Stress',
+        'title': 'ERA5-Land Mean 2m Temperature',
+        'description': 'Mean near-surface temperature from ERA5-Land hourly data.',
+        'category': 'Heat',
+        'source': 'ECMWF/ERA5_LAND/HOURLY',
+    },
+    {
+        'id': 'soilgrids_baseline',
+        'name': 'SoilGrids Baseline',
+        'title': 'Volumetric Soil Water Content Baseline',
+        'description': 'Static SoilGrids volumetric water content layer.',
+        'category': 'Soil & Water',
+        'source': 'ISRIC/SoilGrids250m/v2_0/wv0010',
+    },
+    {
+        'id': 'gpm_imerg_precip',
+        'name': 'GPM IMERG Precipitation',
+        'title': 'IMERG Mean Precipitation',
+        'description': 'Mean precipitation from NASA GPM IMERG V07.',
+        'category': 'Weather',
+        'source': 'NASA/GPM_L3/IMERG_V07',
+    },
+]
+
+
+@legacy_bp.route('/gee/catalog', methods=['GET'])
+def get_gee_catalog():
+    """Catalog endpoint for dataset discovery modal."""
+    return jsonify({
+        'success': True,
+        'count': len(GEE_SNIPPET_CATALOG),
+        'datasets': GEE_SNIPPET_CATALOG,
+    })
+
+
+def _build_dynamic_dataset(dataset_id: str):
+    """Build image + visualization + metadata for dynamic /api/gee/<dataset_id>."""
+    ds = (dataset_id or '').strip().lower()
+
+    # Existing frontend aliases
+    if ds in ('vegetation', 'ndvi'):
+        collection = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED") \
+            .filterDate("2024-06-01", "2024-06-10") \
+            .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 10)) \
+            .select(['B8', 'B4'])
+        image = collection.median().normalizedDifference(['B8', 'B4']).rename('NDVI')
+        vis = {'min': 0.0, 'max': 1.0, 'palette': ['brown', 'yellow', 'green']}
+        meta = {'title': 'NDVI (Vegetation Health)', 'description': 'Normalized Difference Vegetation Index.', 'source': 'COPERNICUS/S2_SR_HARMONIZED'}
+        return image, vis, meta
+
+    if ds in ('terrain', 'elevation'):
+        image = ee.Image("MERIT/DEM/v1_0_3").select('dem')
+        vis = {'min': 0, 'max': 6000, 'palette': ['#000080', '#0000FF', '#00FFFF', '#FFFF00', '#FF8000', '#FF0000', '#800080']}
+        meta = {'title': 'Digital Elevation Model', 'description': 'Terrain elevation above sea level.', 'source': 'MERIT/DEM/v1_0_3'}
+        return image, vis, meta
+
+    if ds in ('nightlights', 'lights'):
+        image = ee.ImageCollection('NOAA/VIIRS/DNB/MONTHLY_V1/VCMSLCFG').filterDate('2023-01-01', '2023-12-31').select('avg_rad').median().pow(0.8).multiply(5)
+        vis = {'min': 0, 'max': 15, 'palette': ['#000000', '#1a0033', '#330066', '#6600cc', '#9933ff', '#cc66ff', '#ffccff', '#ffffff']}
+        meta = {'title': 'Nighttime Lights', 'description': 'Nighttime radiance composite.', 'source': 'NOAA/VIIRS/DNB/MONTHLY_V1/VCMSLCFG'}
+        return image, vis, meta
+
+    if ds == 'landcover':
+        image = ee.Image("ESA/WorldCover/v200/2021")
+        vis = {'min': 10, 'max': 100, 'palette': ['#006400', '#ffbb22', '#ffff4c', '#f096ff', '#fa0000', '#b4b4b4', '#f0f0f0', '#0064c8', '#0096a0', '#00cf75']}
+        meta = {'title': 'Land Cover Classification', 'description': 'Global land cover types.', 'source': 'ESA/WorldCover/v200/2021'}
+        return image, vis, meta
+
+    if ds == 'temperature':
+        image = ee.ImageCollection('MODIS/061/MOD11A1').filterDate('2023-06-01', '2023-08-31').select('LST_Day_1km').median().multiply(0.02).subtract(273.15)
+        vis = {'min': 15, 'max': 45, 'palette': ['#000080', '#0000FF', '#00FFFF', '#00FF00', '#FFFF00', '#FF8000', '#FF0000']}
+        meta = {'title': 'Land Surface Temperature', 'description': 'Daytime land surface temperature.', 'source': 'MODIS/061/MOD11A1'}
+        return image, vis, meta
+
+    if ds in ('rainfall', 'gpm_imerg_precip'):
+        image = ee.ImageCollection('NASA/GPM_L3/IMERG_V07').filterDate('2024-06-01', '2024-06-30').select('precipitation').mean()
+        vis = {'min': 0, 'max': 10, 'palette': ['f7fbff', 'c6dbef', '6baed6', '2171b5', '08306b']}
+        meta = {'title': 'IMERG Precipitation', 'description': 'Mean precipitation composite.', 'source': 'NASA/GPM_L3/IMERG_V07'}
+        return image, vis, meta
+
+    if ds == 'ocean_temp':
+        image = ee.ImageCollection('NASA/OCEANDATA/MODIS-Aqua/L3SMI').filterDate('2023-01-01', '2023-12-31').select('sst').mean()
+        vis = {'min': -2, 'max': 35, 'palette': ['#053061', '#2166ac', '#4393c3', '#d1e5f0', '#f4a582', '#b2182b']}
+        meta = {'title': 'Ocean Surface Temperature', 'description': 'Sea-surface temperature mean composite.', 'source': 'NASA/OCEANDATA/MODIS-Aqua/L3SMI'}
+        return image, vis, meta
+
+    if ds == 'wildfire_risk':
+        image = ee.ImageCollection('MODIS/061/MCD64A1').filterDate('2023-01-01', '2023-12-31').select('BurnDate').mean()
+        vis = {'min': 0, 'max': 366, 'palette': ['#ffffb2', '#fecc5c', '#fd8d3c', '#f03b20', '#bd0026']}
+        meta = {'title': 'Wildfire Risk Proxy', 'description': 'Mean burn-date intensity from MODIS burned area.', 'source': 'MODIS/061/MCD64A1'}
+        return image, vis, meta
+
+    if ds == 'population':
+        image = ee.ImageCollection('CIESIN/GPWv411/GPW_Population_Density').filterDate('2020-01-01', '2020-12-31').first().select('population_density')
+        vis = {'min': 0, 'max': 2000, 'palette': ['#fcfbfd', '#dadaeb', '#bcbddc', '#9e9ac8', '#756bb1', '#54278f']}
+        meta = {'title': 'Population Density', 'description': 'Population density estimate.', 'source': 'CIESIN/GPWv411/GPW_Population_Density'}
+        return image, vis, meta
+
+    # Snippet ids (backend/gee_test_snippets)
+    if ds == 'worldcereal_models_v100':
+        first = ee.ImageCollection('ESA/WorldCereal/2021/MODELS/v100').first()
+        image = ee.Image(first).select('classification')
+        vis = {'min': 0, 'max': 100, 'palette': ['000000', '00ff00']}
+        meta = {'title': 'WorldCereal Classification', 'description': 'Model-based crop classification.', 'source': 'ESA/WorldCereal/2021/MODELS/v100'}
+        return image, vis, meta
+
+    if ds == 'worldcereal_markers_v100':
+        first = ee.ImageCollection('ESA/WorldCereal/2021/MARKERS/v100').first()
+        image = ee.Image(first).select('classification')
+        vis = {'min': 0, 'max': 100, 'palette': ['000000', '00bfff']}
+        meta = {'title': 'WorldCereal Markers', 'description': 'Active cropland marker.', 'source': 'ESA/WorldCereal/2021/MARKERS/v100'}
+        return image, vis, meta
+
+    if ds == 'wapor_et_ratio':
+        aeti = ee.ImageCollection('FAO/WAPOR/3/L1_AETI_D').filterDate('2024-01-01', '2024-12-31').mean()
+        ret = ee.ImageCollection('FAO/WAPOR/3/L1_RET_D').filterDate('2024-01-01', '2024-12-31').mean()
+        image = aeti.select('L1-AETI-D').divide(ret.select('L1-RET-D')).rename('ETa_ETo_ratio')
+        vis = {'min': 0, 'max': 1.5, 'palette': ['8b0000', 'ffa500', 'ffff00', '00ff00']}
+        meta = {'title': 'WAPOR ET Ratio', 'description': 'ETa/ETo water-use efficiency ratio.', 'source': 'FAO/WAPOR/3'}
+        return image, vis, meta
+
+    if ds == 'gfsad_cropland_extent':
+        image = ee.Image('USGS/GFSAD1000_V1').select('landcover')
+        vis = {'min': 0, 'max': 5, 'palette': ['000000', 'ff8c00', '8b4513', '00a650', '7fff00', 'ffff00']}
+        meta = {'title': 'GFSAD Cropland Extent', 'description': 'Global cropland extent landcover.', 'source': 'USGS/GFSAD1000_V1'}
+        return image, vis, meta
+
+    if ds == 'fao_drained_organic_soils':
+        latest = ee.ImageCollection('FAO/GHG/1/DROSA_A').sort('system:time_start', False).first()
+        image = ee.Image(latest).select(0)
+        vis = {'min': 0, 'max': 50, 'palette': ['f7fcf5', '74c476', '00441b']}
+        meta = {'title': 'FAO Drained Organic Soils', 'description': 'Latest drained organic soil area layer.', 'source': 'FAO/GHG/1/DROSA_A'}
+        return image, vis, meta
+
+    if ds == 'forest_loss_drivers_wri_gdm':
+        image = ee.Image('projects/landandcarbon/assets/wri_gdm_drivers_forest_loss_1km/v1_2_2001_2024').select(0)
+        vis = {'min': 1, 'max': 7, 'palette': ['fdae61', 'd7191c', 'abdda4', '2b83ba', 'f46d43', '8073ac', '999999']}
+        meta = {'title': 'Forest Loss Drivers', 'description': 'Dominant driver of forest loss.', 'source': 'WRI GDM forest loss drivers'}
+        return image, vis, meta
+
+    if ds == 'chirps_rainfall_anomaly':
+        recent = ee.ImageCollection('UCSB-CHG/CHIRPS/DAILY').filterDate('2024-06-01', '2024-08-31').select('precipitation').sum()
+        baseline = ee.ImageCollection('UCSB-CHG/CHIRPS/DAILY').filterDate('2014-06-01', '2023-08-31').select('precipitation').mean()
+        image = recent.subtract(baseline).rename('rain_anomaly_mm')
+        vis = {'min': -200, 'max': 200, 'palette': ['8b0000', 'fdd49e', 'f7f7f7', '9ecae1', '08519c']}
+        meta = {'title': 'CHIRPS Rainfall Anomaly', 'description': 'Recent rainfall anomaly vs baseline.', 'source': 'UCSB-CHG/CHIRPS/DAILY'}
+        return image, vis, meta
+
+    if ds == 'gfs_forecast_panel':
+        gfs = ee.ImageCollection('NOAA/GFS0P25').filter(ee.Filter.gte('forecast_hours', 0)).filter(ee.Filter.lte('forecast_hours', 24)).sort('system:time_start', False)
+        image = ee.Image(gfs.first()).select('temperature_2m_above_ground').subtract(273.15)
+        vis = {'min': 10, 'max': 45, 'palette': ['313695', '74add1', 'fee090', 'f46d43', 'a50026']}
+        meta = {'title': 'GFS Forecast Temperature', 'description': 'Near-term 2m temperature forecast.', 'source': 'NOAA/GFS0P25'}
+        return image, vis, meta
+
+    if ds == 'soil_moisture_smap':
+        image = ee.ImageCollection('NASA/SMAP/SPL3SMP_E/006').filterDate('2024-01-01', '2024-12-31').select('soil_moisture_am').mean()
+        vis = {'min': 0, 'max': 0.6, 'palette': ['f46d43', 'fdae61', 'abd9e9', '2c7bb6']}
+        meta = {'title': 'SMAP Soil Moisture', 'description': 'Surface soil moisture mean.', 'source': 'NASA/SMAP/SPL3SMP_E/006'}
+        return image, vis, meta
+
+    if ds == 'spei_drought_index':
+        latest = ee.ImageCollection('CSIC/SPEI/2_10').filterDate('2022-01-01', '2023-01-01').sort('system:time_start', False).first()
+        image = ee.Image(latest).select('SPEI_12_month')
+        vis = {'min': -2.5, 'max': 2.5, 'palette': ['8b0000', 'f46d43', 'fee08b', 'd9ef8b', '66bd63', '1a9850']}
+        meta = {'title': 'SPEI Drought Index', 'description': 'SPEI 12-month drought index.', 'source': 'CSIC/SPEI/2_10'}
+        return image, vis, meta
+
+    if ds == 'kbdi_drought_index':
+        latest = ee.ImageCollection('UTOKYO/WTLAB/KBDI/v1').filterDate('2024-01-01', '2024-12-31').sort('system:time_start', False).first()
+        image = ee.Image(latest).select('KBDI')
+        vis = {'min': 0, 'max': 800, 'palette': ['313695', '74add1', 'fee090', 'f46d43', 'a50026']}
+        meta = {'title': 'KBDI Drought Index', 'description': 'Keetch-Byram Drought Index.', 'source': 'UTOKYO/WTLAB/KBDI/v1'}
+        return image, vis, meta
+
+    if ds == 'dynamic_land_cover_change':
+        image = ee.ImageCollection('GOOGLE/DYNAMICWORLD/V1').filterDate('2023-01-01', '2023-12-31').select('crops').mean()
+        vis = {'min': 0, 'max': 1, 'palette': ['ffffff', 'ffffb2', 'fecc5c', 'e31a1c']}
+        meta = {'title': 'Dynamic World Crops Probability', 'description': 'Mean crops probability from Dynamic World.', 'source': 'GOOGLE/DYNAMICWORLD/V1'}
+        return image, vis, meta
+
+    if ds == 'era5_land_heat_stress':
+        image = ee.ImageCollection('ECMWF/ERA5_LAND/HOURLY').filterDate('2024-05-01', '2024-05-31').select('temperature_2m').mean().subtract(273.15)
+        vis = {'min': 15, 'max': 45, 'palette': ['313695', '74add1', 'fee08b', 'f46d43', 'a50026']}
+        meta = {'title': 'ERA5-Land Heat Stress', 'description': 'Mean 2m temperature heat-stress proxy.', 'source': 'ECMWF/ERA5_LAND/HOURLY'}
+        return image, vis, meta
+
+    if ds == 'soilgrids_baseline':
+        image = ee.Image('ISRIC/SoilGrids250m/v2_0/wv0010').select('val_0_5cm_Q0_5')
+        vis = {'min': 0.05, 'max': 0.6, 'palette': ['440154', '3b528b', '21918c', '5ec962', 'fde725']}
+        meta = {'title': 'SoilGrids Baseline', 'description': 'Volumetric soil water content baseline.', 'source': 'ISRIC/SoilGrids250m/v2_0'}
+        return image, vis, meta
+
+    raise ValueError(f'Unsupported dataset id: {dataset_id}')
+
+
+@legacy_bp.route('/gee/<dataset_id>', methods=['GET'])
+def get_dynamic_dataset_tiles(dataset_id: str):
+    """Dynamic dataset tiles endpoint used by dataset modal and cards."""
+    try:
+        image, vis_params, metadata = _build_dynamic_dataset(dataset_id)
+        map_id = image.getMapId(vis_params)
+        return jsonify({
+            'success': True,
+            'tile_url': map_id['tile_fetcher'].url_format,
+            'metadata': {
+                **metadata,
+                'dataset_id': dataset_id,
+                'timestamp': datetime.now().isoformat(),
+            }
+        })
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 404
+    except Exception as e:
+        logger.error(f"[GEE_DYNAMIC] Dataset {dataset_id} failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
