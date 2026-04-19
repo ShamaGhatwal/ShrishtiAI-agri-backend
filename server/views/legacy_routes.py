@@ -844,6 +844,15 @@ def _build_dynamic_dataset(dataset_id: str):
         meta = {'title': 'NDVI (Vegetation Health)', 'description': 'Normalized Difference Vegetation Index.', 'source': 'COPERNICUS/S2_SR_HARMONIZED'}
         return image, vis, meta
 
+    if ds == 'ndbi':
+        collection = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED") \
+            .filterDate("2024-01-01", "2024-12-31") \
+            .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 30))
+        image = collection.median().normalizedDifference(['B11', 'B8']).rename('NDBI')
+        vis = {'min': -0.5, 'max': 0.5, 'palette': ['0000FF', '00FFFF', '00FF00', 'FFFF00', 'FFA500', 'FF0000']}
+        meta = {'title': 'NDBI (Built-up Index)', 'description': 'Normalized Difference Built-up Index.', 'source': 'COPERNICUS/S2_SR_HARMONIZED'}
+        return image, vis, meta
+
     if ds in ('terrain', 'elevation'):
         image = ee.Image("MERIT/DEM/v1_0_3").select('dem')
         vis = {'min': 0, 'max': 6000, 'palette': ['#000080', '#0000FF', '#00FFFF', '#FFFF00', '#FF8000', '#FF0000', '#800080']}

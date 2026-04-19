@@ -110,6 +110,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from config import get_config, Config
 from config.raster_config import get_raster_config
 from services import GEEService, AIService
+from services.urban_planning_service import UrbanPlanningService
+from services.forest_department_service import ForestDepartmentService
 from services.weather_service import NASAPowerService
 from services.feature_engineering_service import FeatureEngineeringService
 from services.raster_data_service import RasterDataService
@@ -143,6 +145,8 @@ from routes.auth_routes import auth_bp, init_auth_routes
 from routes.layers_routes import layers_bp
 from routes.credits_routes import credits_bp, init_credits_routes
 from routes.api_keys_routes import api_keys_bp
+from routes.urban_planning_routes import urban_planning_bp
+from routes.forest_dept_routes import forest_dept_bp
 from utils import setup_logging, create_error_response, create_success_response
 print(f"[STARTUP] All modules imported.  ({_elapsed()})")
 
@@ -197,6 +201,7 @@ def create_app(config_name: str = None) -> Flask:
     # Store controllers in app extensions for blueprint access
     if not hasattr(app, 'extensions'):
         app.extensions = {}
+    app.extensions['services'] = services
     app.extensions['controllers'] = controllers
     
     # Register blueprints
@@ -313,6 +318,18 @@ def initialize_services(config_class: Config, logger: logging.Logger) -> dict:
         gee_service=services.get('gee')
     )
     services['geovision'] = geovision_service
+
+    # Initialize Urban Planning service
+    logger.info("Initializing Urban Planning service...")
+    urban_planning_service = UrbanPlanningService(services['gee'])
+    services['urban_planning'] = urban_planning_service
+    logger.info("Urban Planning service initialized successfully")
+
+    # Initialize Forest Department service
+    logger.info("Initializing Forest Department service...")
+    forest_dept_service = ForestDepartmentService(services['gee'])
+    services['forest_dept'] = forest_dept_service
+    logger.info("Forest Department service initialized successfully")
 
     # ── Background warm-up ──────────────────────────────────────────────────
     # TensorFlow takes ~90 s to import.  We load it in a daemon thread so
@@ -446,6 +463,8 @@ def register_blueprints(app: Flask, controllers: dict, logger: logging.Logger):
     app.register_blueprint(layers_bp, url_prefix='/api')  # Register dashboard state/goa layer routes
     app.register_blueprint(credits_bp, url_prefix='/api')  # Register dashboard credits routes
     app.register_blueprint(api_keys_bp, url_prefix='/api')  # Register dashboard API keys routes
+    app.register_blueprint(urban_planning_bp, url_prefix='/api/urban-planning')  # Register urban planning routes
+    app.register_blueprint(forest_dept_bp, url_prefix='/api/forest-dept')  # Register forest department routes
     
     logger.info("Blueprints registered successfully")
     
