@@ -845,12 +845,24 @@ def _build_dynamic_dataset(dataset_id: str):
         return image, vis, meta
 
     if ds == 'ndbi':
-        collection = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED") \
-            .filterDate("2024-01-01", "2024-12-31") \
-            .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 30))
-        image = collection.median().normalizedDifference(['B11', 'B8']).rename('NDBI')
-        vis = {'min': -0.5, 'max': 0.5, 'palette': ['0000FF', '00FFFF', '00FF00', 'FFFF00', 'FFA500', 'FF0000']}
-        meta = {'title': 'NDBI (Built-up Index)', 'description': 'Normalized Difference Built-up Index.', 'source': 'COPERNICUS/S2_SR_HARMONIZED'}
+        # Use Landsat TOA composite for more stable global tile generation.
+        collection = ee.ImageCollection('LANDSAT/LC08/C02/T1_TOA') \
+            .filterDate('2023-01-01', '2023-12-31') \
+            .filter(ee.Filter.lt('CLOUD_COVER', 40))
+        composite = collection.median()
+        image = composite.normalizedDifference(['B6', 'B5']).rename('NDBI')
+        vis = {'min': -0.4, 'max': 0.5, 'palette': ['0000FF', '00FFFF', '00FF00', 'FFFF00', 'FFA500', 'FF0000']}
+        meta = {'title': 'NDBI (Built-up Index)', 'description': 'Normalized Difference Built-up Index.', 'source': 'LANDSAT/LC08/C02/T1_TOA'}
+        return image, vis, meta
+
+    if ds == 'ndwi':
+        collection = ee.ImageCollection('LANDSAT/LC08/C02/T1_TOA') \
+            .filterDate('2023-01-01', '2023-12-31') \
+            .filter(ee.Filter.lt('CLOUD_COVER', 40))
+        composite = collection.median()
+        image = composite.normalizedDifference(['B3', 'B5']).rename('NDWI')
+        vis = {'min': -0.5, 'max': 0.6, 'palette': ['8b4513', 'f4a460', 'f0e68c', '87ceeb', '1e90ff', '00008b']}
+        meta = {'title': 'NDWI (Water Index)', 'description': 'Normalized Difference Water Index.', 'source': 'LANDSAT/LC08/C02/T1_TOA'}
         return image, vis, meta
 
     if ds in ('terrain', 'elevation'):
