@@ -7,6 +7,8 @@ import logging
 import traceback
 from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime, timedelta
+import math
+import numpy as np
 
 from models.weatherwise_prediction_model import WeatherWisePredictionModel
 from services.weather_service import NASAPowerService
@@ -126,7 +128,7 @@ class WeatherWisePredictionService:
             return False, "Coordinates must be numeric values"
     
     def collect_weather_data(self, latitude: float, longitude: float, 
-                           start_date: str, end_date: str) -> Tuple[bool, str, Optional[Dict[str, List[float]]]]:
+                           start_date: str, end_date: str, days_before: int = 60) -> Tuple[bool, str, Optional[Dict[str, List[float]]]]:
         """
         Collect weather data for LSTM forecasting (same as HazardGuard)
         
@@ -148,7 +150,7 @@ class WeatherWisePredictionService:
                 latitude=latitude,
                 longitude=longitude,
                 disaster_date=end_date,  # Use end_date as disaster_date
-                days_before=60  # Use 60 days for LSTM input sequence (model expects 60 timesteps)
+                days_before=days_before
             )
             
             # Fetch weather data using weather service
@@ -171,6 +173,49 @@ class WeatherWisePredictionService:
             self.service_stats['weather_fetch_failures'] += 1
             logger.error(f"WeatherWise weather data collection error: {e}")
             return False, f"Weather collection error: {str(e)}", None
+
+    def _normalize_weather_window(self, weather_data: Dict[str, List[float]], target_days: int = 60) -> Dict[str, List[float]]:
+        """
+        Ensure each weather variable has exactly target_days values and
+        impute missing values using variable-wise median from available data.
+        """
+        normalized: Dict[str, List[float]] = {}
+
+        for key, raw_values in weather_data.items():
+            values = list(raw_values) if isinstance(raw_values, list) else []
+
+            # Keep most recent target_days values if oversized.
+            if len(values) > target_days:
+                values = values[-target_days:]
+
+            # Pad missing tail if undersized.
+            if len(values) < target_days:
+                values.extend([None] * (target_days - len(values)))
+
+            valid_values = []
+            for value in values:
+                if value is None:
+                    continue
+                try:
+                    numeric = float(value)
+                except (TypeError, ValueError):
+                    continue
+                if math.isfinite(numeric):
+                    valid_values.append(numeric)
+
+            median_value = float(np.median(valid_values)) if valid_values else 0.0
+
+            cleaned_values: List[float] = []
+            for value in values:
+                try:
+                    numeric = float(value)
+                    cleaned_values.append(numeric if math.isfinite(numeric) else median_value)
+                except (TypeError, ValueError):
+                    cleaned_values.append(median_value)
+
+            normalized[key] = cleaned_values
+
+        return normalized
     
     def collect_feature_data(self, weather_data: Dict[str, List[float]], 
                            latitude: float, longitude: float, reference_date: str) -> Tuple[bool, str, Optional[Dict[str, List[float]]]]:
@@ -242,9 +287,11 @@ class WeatherWisePredictionService:
                     'processing_time_seconds': (datetime.now() - start_time).total_seconds()
                 }
             
-            # Calculate date range for historical data (60 days before reference date).
-            # NASA POWER data is delayed, so clamp very recent dates to latest available day.
-            latest_available_date = datetime.now() - timedelta(days=7)
+            # WeatherWise accepts any date up to today.
+            # If reference date is newer than NASA availability, we fetch the
+            # available segment and impute missing recent days to preserve 60 steps.
+            today_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            latest_available_date = (today_date - timedelta(days=7))
             requested_reference_date = reference_date
 
             if reference_date:
@@ -257,28 +304,46 @@ class WeatherWisePredictionService:
                         'processing_time_seconds': (datetime.now() - start_time).total_seconds()
                     }
 
-                if parsed_reference_date > latest_available_date:
-                    logger.warning(
-                        "[WEATHERWISE] Requested reference_date %s is newer than latest NASA POWER date %s. Clamping.",
-                        reference_date,
-                        latest_available_date.strftime('%Y-%m-%d')
-                    )
-                    end_date = latest_available_date
-                else:
-                    end_date = parsed_reference_date
+                if parsed_reference_date > today_date:
+                    return {
+                        'success': False,
+                        'error': f"reference_date '{reference_date}' cannot be in the future",
+                        'processing_time_seconds': (datetime.now() - start_time).total_seconds()
+                    }
+
+                requested_end_date = parsed_reference_date
             else:
-                # Default to latest available date from NASA POWER.
-                end_date = latest_available_date
-            
-            start_date = end_date - timedelta(days=60)  # 60 days before end_date
-            start_date_str = start_date.strftime('%Y-%m-%d')
-            end_date_str = end_date.strftime('%Y-%m-%d')
-            
-            logger.info(f"[WEATHERWISE] Historical data range: {start_date_str} to {end_date_str}")
+                requested_end_date = today_date
+
+            desired_start_date = requested_end_date - timedelta(days=59)
+            effective_end_date = requested_end_date
+            tail_missing_days = 0
+            nasa_days_to_fetch = 60
+
+            if requested_end_date > latest_available_date:
+                tail_missing_days = (requested_end_date - latest_available_date).days
+                effective_end_date = latest_available_date
+                nasa_days_to_fetch = max(1, 60 - tail_missing_days)
+
+            nasa_start_date = effective_end_date - timedelta(days=nasa_days_to_fetch - 1)
+
+            desired_start_str = desired_start_date.strftime('%Y-%m-%d')
+            desired_end_str = requested_end_date.strftime('%Y-%m-%d')
+            nasa_start_str = nasa_start_date.strftime('%Y-%m-%d')
+            effective_end_str = effective_end_date.strftime('%Y-%m-%d')
+
+            logger.info(
+                "[WEATHERWISE] Desired window %s to %s; NASA fetch window %s to %s; missing tail days=%s",
+                desired_start_str,
+                desired_end_str,
+                nasa_start_str,
+                effective_end_str,
+                tail_missing_days
+            )
             
             # Collect weather data
             weather_success, weather_message, weather_data = self.collect_weather_data(
-                latitude, longitude, start_date_str, end_date_str
+                latitude, longitude, nasa_start_str, effective_end_str, days_before=nasa_days_to_fetch
             )
             
             if not weather_success:
@@ -288,10 +353,17 @@ class WeatherWisePredictionService:
                     'error': f'Weather data collection failed: {weather_message}',
                     'processing_time_seconds': (datetime.now() - start_time).total_seconds()
                 }
+
+            if tail_missing_days > 0 and weather_data:
+                for key in list(weather_data.keys()):
+                    weather_data[key] = list(weather_data[key]) + [None] * tail_missing_days
+
+            if weather_data:
+                weather_data = self._normalize_weather_window(weather_data, target_days=60)
             
             # Collect engineered features (excluding raster data)
             feature_success, feature_message, feature_data = self.collect_feature_data(
-                weather_data, latitude, longitude, end_date_str
+                weather_data, latitude, longitude, desired_end_str
             )
             
             if not feature_success:
@@ -340,9 +412,12 @@ class WeatherWisePredictionService:
                     'data_collection': {
                         'weather_data_success': weather_success,
                         'feature_engineering_success': feature_success,
-                        'historical_data_range': f'{start_date_str} to {end_date_str}',
+                        'historical_data_range': f'{desired_start_str} to {desired_end_str}',
+                        'nasa_data_window': f'{nasa_start_str} to {effective_end_str}',
+                        'nasa_days_fetched': nasa_days_to_fetch,
+                        'missing_tail_days_imputed': tail_missing_days,
                         'requested_reference_date': requested_reference_date,
-                        'effective_reference_date': end_date_str,
+                        'effective_reference_date': effective_end_str,
                         'latest_available_reference_date': latest_available_date.strftime('%Y-%m-%d')
                     },
                     'processing_info': {

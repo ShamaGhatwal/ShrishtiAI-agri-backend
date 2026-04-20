@@ -498,6 +498,36 @@ class HazardGuardPredictionService:
                         'confidence': 'unknown',
                         'error': str(type_error)
                     }
+
+            # Business rule:
+            # If base model says Disaster but none of the specialized models
+            # (Flood/Drought/Landslide/Storm) predicts disaster, treat as Normal.
+            if (
+                prediction_result.get('success')
+                and prediction_result.get('prediction') == 'Disaster'
+                and disaster_types_result is not None
+                and not disaster_types_result.get('disaster_types')
+            ):
+                logger.info(
+                    "   [SPECIALIZED_OVERRIDE] Base=Disaster but no specialized disaster detected. Final label set to Normal."
+                )
+
+                probability = prediction_result.get('probability', {}) or {}
+                base_disaster_prob = float(probability.get('disaster', 0.5))
+
+                adjusted_disaster_prob = min(max(base_disaster_prob, 0.0), 0.49)
+                adjusted_normal_prob = max(float(probability.get('normal', 1.0 - adjusted_disaster_prob)), 1.0 - adjusted_disaster_prob)
+
+                prediction_result['prediction'] = 'Normal'
+                prediction_result['probability'] = {
+                    'normal': adjusted_normal_prob,
+                    'disaster': adjusted_disaster_prob
+                }
+                prediction_result['confidence'] = abs(adjusted_normal_prob - adjusted_disaster_prob)
+                prediction_result['specialized_validation'] = {
+                    'overridden_to_normal': True,
+                    'reason': 'No specialized disaster classifiers predicted positive class'
+                }
             
             # Calculate total processing time
             processing_time = (datetime.now() - start_time).total_seconds()
