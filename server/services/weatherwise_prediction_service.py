@@ -242,12 +242,33 @@ class WeatherWisePredictionService:
                     'processing_time_seconds': (datetime.now() - start_time).total_seconds()
                 }
             
-            # Calculate date range for historical data (60 days before reference date)
+            # Calculate date range for historical data (60 days before reference date).
+            # NASA POWER data is delayed, so clamp very recent dates to latest available day.
+            latest_available_date = datetime.now() - timedelta(days=7)
+            requested_reference_date = reference_date
+
             if reference_date:
-                end_date = datetime.strptime(reference_date, '%Y-%m-%d')
+                try:
+                    parsed_reference_date = datetime.strptime(reference_date, '%Y-%m-%d')
+                except ValueError:
+                    return {
+                        'success': False,
+                        'error': f"Invalid reference_date '{reference_date}'. Expected YYYY-MM-DD",
+                        'processing_time_seconds': (datetime.now() - start_time).total_seconds()
+                    }
+
+                if parsed_reference_date > latest_available_date:
+                    logger.warning(
+                        "[WEATHERWISE] Requested reference_date %s is newer than latest NASA POWER date %s. Clamping.",
+                        reference_date,
+                        latest_available_date.strftime('%Y-%m-%d')
+                    )
+                    end_date = latest_available_date
+                else:
+                    end_date = parsed_reference_date
             else:
-                # Default to current date minus 7 days (NASA POWER lag)
-                end_date = datetime.now() - timedelta(days=7)
+                # Default to latest available date from NASA POWER.
+                end_date = latest_available_date
             
             start_date = end_date - timedelta(days=60)  # 60 days before end_date
             start_date_str = start_date.strftime('%Y-%m-%d')
@@ -319,7 +340,10 @@ class WeatherWisePredictionService:
                     'data_collection': {
                         'weather_data_success': weather_success,
                         'feature_engineering_success': feature_success,
-                        'historical_data_range': f'{start_date_str} to {end_date_str}'
+                        'historical_data_range': f'{start_date_str} to {end_date_str}',
+                        'requested_reference_date': requested_reference_date,
+                        'effective_reference_date': end_date_str,
+                        'latest_available_reference_date': latest_available_date.strftime('%Y-%m-%d')
                     },
                     'processing_info': {
                         'total_processing_time_seconds': processing_time,
